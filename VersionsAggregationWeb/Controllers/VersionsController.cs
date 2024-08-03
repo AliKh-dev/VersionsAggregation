@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Text;
+using System.IO.Compression;
 using LibGit2Sharp;
 
 namespace VersionsAggregationWeb.Controllers
@@ -22,6 +23,14 @@ namespace VersionsAggregationWeb.Controllers
             #region Github Clone
             string repoUrl = githubRepoUrl;
             string clonePath = @"C:\Users\Ali\Desktop\Practice\CloneFolder";
+
+            //if (Directory.GetDirectories(clonePath).Length != 0)
+            //{
+            //    foreach (string subDirectory in Directory.GetDirectories(clonePath))
+            //    {
+            //        Directory.Delete(subDirectory, true);
+            //    }
+            //}
 
             try
             {
@@ -163,7 +172,33 @@ namespace VersionsAggregationWeb.Controllers
             }
             #endregion
 
-            return View();
+            #region Zip File
+            string zipFilePath = Path.Combine(localPath, rootFolderName + ".zip");
+
+            if (System.IO.File.Exists(zipFilePath))
+                System.IO.File.Delete(zipFilePath);
+
+            ZipFile.CreateFromDirectory(creationPath.ToString(), zipFilePath);
+
+            byte[] zipBytes = System.IO.File.ReadAllBytes(zipFilePath);
+            string zipFileName = Path.GetFileName(zipFilePath);
+            #endregion
+
+            //return Json(new { zipFilePath = Url.Action("DownloadZip", new { filePath = zipFilePath }) });
+            
+            return File(zipBytes, "application/zip", zipFileName);
         }
+
+        //[HttpGet]
+        //public IActionResult DownloadZip(string filePath)
+        //{
+        //    if (System.IO.File.Exists(filePath))
+        //    {
+        //        byte[] fileBytes = System.IO.File.ReadAllBytes(filePath);
+        //        string fileName = Path.GetFileName(filePath);
+        //        return File(fileBytes, "application/zip", fileName);
+        //    }
+        //    return NotFound();
+        //}
     }
 }
