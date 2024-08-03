@@ -1,0 +1,89 @@
+﻿<!DOCTYPE html>
+<html lang="en-us" dir="ltr">
+
+<head>
+    <title>Home Page</title>
+    <meta name="viewport" content="width=device-width" />
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 18px;
+            margin: 5px;
+        }
+
+        .form-group {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+        }
+
+            .form-group label {
+                width: 200px; /* Adjust the width as needed */
+                margin-right: 10px; /* Space between label and input */
+            }
+
+            .form-group input[type="text"] {
+                flex: 1;
+                border: 1px solid #ded9ee;
+                padding: 10px;
+                border-radius: 8px;
+                color: #1b1b1b;
+                transition: 180ms ease-in border-color;
+            }
+
+        input::placeholder {
+            color: grey;
+            font-weight: 300;
+        }
+
+        input:focus {
+            border-color: #89888b;
+        }
+
+        /* Center the submit button */
+        .submit-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        input[type="submit"] {
+            background-color: #2ed573;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 20%;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <form asp-controller="Versions" asp-action="Index" method="post">
+        <fieldset>
+            <legend>Your Information</legend>
+
+            <div class="form-group">
+                <label for="github-url">Github Url:</label>
+                <input type="text" id="github-url" name="githubRepoUrl" placeholder="Enter github url here." />
+            </div>
+
+            <div class="form-group">
+                <label for="versions-path">Path of Versions:</label>
+                <input type="text" id="versions-path" name="versionsPath" placeholder="Enter versions path here.">
+            </div>
+
+            <div class="form-group">
+                <label for="root-name">Root folder name:</label>
+                <input type="text" id="root-name" name="rootFolderName" placeholder="Enter root folder name here.">
+            </div>
+
+            <div class="submit-container">
+                <input type="submit" value="Submit">
+            </div>
+        </fieldset>
+    </form>
+</body>
+
+</html>
