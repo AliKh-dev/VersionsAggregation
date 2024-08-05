@@ -55,36 +55,10 @@
             width: 20%;
             text-align: center;
         }
-
-        /* .download-link {
-            display: none;
-            text-align: center;
-            margin-top: 20px;
-        } */
     </style>
-@*     
-    <script>
-        async function handleSubmit(event) {
-            event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
-            const response = await fetch(form.action, {
-                method: 'POST',
-                body: formData
-            });
-            const result = await response.json();
-            if (result.zipFilePath) {
-                const downloadLink = document.getElementById('download-link');
-                downloadLink.href = result.zipFilePath;
-                downloadLink.style.display = 'block';
-            }
-        }
-    </script>
- *@
 </head>
 
 <body>
-    @* onsubmit="handleSubmit(event)" *@
     <form asp-controller="Versions" asp-action="Index" method="post" >
         <fieldset>
             <legend>Your Information</legend>
@@ -103,16 +77,16 @@
                 <label for="root-name">Root folder name:</label>
                 <input type="text" id="root-name" name="rootFolderName" placeholder="Enter root folder name here.">
             </div>
+            
+            <div class="form-group">
+                <label for="project-name">Project name:</label>
+                <input type="text" id="project-name" name="projectName" placeholder="Enter project name here.">
+            </div>
 
             <div class="submit-container">
                 <input type="submit" value="Submit">
             </div>
 
-            @*
-            <div class="download-link">
-                <a id="download-link" href="#">Download Zip File</a>
-            </div>
-            *@
         </fieldset>
     </form>
 </body>

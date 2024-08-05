@@ -2,12 +2,16 @@
 using System.Text;
 using System.IO.Compression;
 using LibGit2Sharp;
+using System.Net.Sockets;
 
 namespace VersionsAggregationWeb.Controllers
 {
     [Route("[controller]")]
     public class VersionsController : Controller
     {
+        private readonly IConfiguration _configuration;
+        public VersionsController(IConfiguration configuration) => _configuration = configuration;
+
         [Route("/")]
         [Route("[action]")]
         [HttpGet]
@@ -18,187 +22,201 @@ namespace VersionsAggregationWeb.Controllers
 
         [Route("[action]")]
         [HttpPost]
-        public IActionResult Index(string githubRepoUrl, string versionsPath, string rootFolderName)
+        public IActionResult Index(string githubRepoUrl, string versionsPath, string projectName, string rootFolderName)
         {
-            #region Github Clone
-            string repoUrl = githubRepoUrl;
             string clonePath = @"C:\Users\Ali\Desktop\Practice\CloneFolder";
 
-            //if (Directory.GetDirectories(clonePath).Length != 0)
-            //{
-            //    foreach (string subDirectory in Directory.GetDirectories(clonePath))
-            //    {
-            //        Directory.Delete(subDirectory, true);
-            //    }
-            //}
+            if (!CloneRepositoryFromGithub(githubRepoUrl, clonePath))
+                throw new InvalidOperationException(message: "Repository Url is incorrect!");
 
+            string localPath = @"C:\Users\Ali\Desktop\Practice\CreationFolder";
+
+            CreateLocalFolder(localPath, rootFolderName, projectName);
+
+            CreateDatabaseFolders(localPath, rootFolderName, projectName);
+
+            ChooseSubFolder(localPath, rootFolderName, clonePath, versionsPath, projectName);
+
+            return File(ZipLocalFolder(localPath, rootFolderName), "application/zip", fileDownloadName: rootFolderName + ".zip");
+
+        }
+
+        private static bool CloneRepositoryFromGithub(string githubRepoUrl, string clonePath)
+        {
             try
             {
-                Repository.Clone(repoUrl, clonePath);
-                Console.WriteLine($"Repository Clone to: {clonePath}");
+                Repository.Clone(githubRepoUrl, clonePath);
+                return true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"An error ocurrred: {ex.Message}");
+                return false;
             }
-            #endregion
+        }
 
-            #region Path and Name
-            string localPath = @"C:\Users\Ali\Desktop\Practice\CreationFolder";
-            string localFolderName = '\\' + rootFolderName;
-            #endregion
+        private string[] GetLocalFolderNames(string projectName)
+        {
+            return _configuration.GetSection($"databaseDirectories:{projectName}:Applications")
+                                 .Get<string[]>()
+                                 ?? throw new InvalidOperationException
+                                 ("Configuration for Applications is missing or null.");
+        }
 
-            #region Operation Directory
-            StringBuilder creationPath = new(localPath);
+        private string[] GetDatabaseFolderNames(string projectName)
+        {
+            return _configuration.GetSection($"databaseDirectories:{projectName}:databaseSubDirectories")
+                                 .Get<string[]>()
+                                 ?? throw new InvalidOperationException
+                                 ("Configuration for Applications is missing or null.");
+        }
 
-            if (!Directory.Exists(creationPath.Append(localFolderName).ToString()))
-                Directory.CreateDirectory(creationPath.ToString());
+        private void CreateLocalFolder(string localPath, string rootFolderName, string projectName)
+        {
+            string localFolderPath = Path.Combine(localPath, rootFolderName);
 
-            // Applications, DataBases, Reports Directories
-            string[] localFolderSubDirectories = [@"\Applications", @"\DataBases", @"\Reports"];
+            if (Directory.Exists(localFolderPath))
+                Directory.Delete(localFolderPath, true);
+
+            Directory.CreateDirectory(localFolderPath);
+
+            string[] localFolderSubDirectories = GetLocalFolderNames(projectName)!;
 
             foreach (string localFolderSubDirectory in localFolderSubDirectories)
-            {
-                if (!Directory.Exists(creationPath.Append(localFolderSubDirectory).ToString()))
-                    Directory.CreateDirectory(creationPath.ToString());
-                creationPath.Replace(localFolderSubDirectory, string.Empty);
-            }
+                Directory.CreateDirectory(Path.Combine(localFolderPath, localFolderSubDirectory));
+        }
 
-            // Folders inside DataBase Folder
-            string[] databaseSubDirectories = ["\\1-Counterparty", "\\2-AccountManagement", "\\3-CCS_Oracle_views", "\\4-Common"];
-            creationPath.Append(localFolderSubDirectories[1]);
+        private void CreateDatabaseFolders(string localPath, string rootFolderName, string projectName)
+        {
+            string[] databaseSubDirectories = GetDatabaseFolderNames(projectName)!;
 
             foreach (string databaseSubDirectory in databaseSubDirectories)
             {
-                if (!Directory.Exists(creationPath.Append(databaseSubDirectory).ToString()))
-                    Directory.CreateDirectory(creationPath.ToString());
-                creationPath.Replace(databaseSubDirectory, string.Empty);
-            }
-            creationPath.Replace(localFolderSubDirectories[1], string.Empty);
-            #endregion
+                string path = Path.Combine(localPath, rootFolderName, "Databases", databaseSubDirectory);
 
-            #region Version Directory
-            string[] versionDirectories = Directory.GetDirectories(clonePath + '\\' + versionsPath);
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+
+                Directory.CreateDirectory(path);
+            }
+        }
+
+        private void ChooseSubFolder(string localPath, string rootFolderName, string clonePath, string versionsPath, string projectName)
+        {
+            string[] versionDirectories = Directory.GetDirectories(Path.Combine(clonePath, versionsPath));
+            string[] localFolderNames = GetLocalFolderNames(projectName);
 
             foreach (string versionDirectory in versionDirectories)
             {
                 foreach (string versionSubDirectory in Directory.GetDirectories(versionDirectory))
                 {
-                    if (versionSubDirectory.Contains("Applications"))
-                    {
-                        string[] applications = Directory.GetDirectories(versionSubDirectory);
-                        creationPath.Append(localFolderSubDirectories[0]);
+                    if (versionSubDirectory.Contains(localFolderNames[0]))
+                        AggregateApplicationFolders(versionSubDirectory, Path.Combine(localPath, rootFolderName, localFolderNames[0]));
 
-                        foreach (string application in applications)
-                        {
-                            string applicationsDestinationPath = new(creationPath.ToString() + '\\' + Path.GetFileName(application));
+                    else if (versionSubDirectory.Contains(localFolderNames[1]))
+                        AggregateDatabaseFolders(versionSubDirectory, Path.Combine(localPath, rootFolderName, localFolderNames[1]), projectName);
 
-                            if (Directory.Exists(applicationsDestinationPath))
-                                Directory.Delete(applicationsDestinationPath, true);
-                            Directory.Move(application, applicationsDestinationPath);
-                        }
-                        creationPath.Replace(localFolderSubDirectories[0], string.Empty);
-                    }
-
-                    if (versionSubDirectory.Contains("DataBases"))
-                    {
-                        string[] databases = Directory.GetDirectories(versionSubDirectory);
-                        creationPath.Append(localFolderSubDirectories[1]);
-
-                        foreach (string database in databases)
-                        {
-                            int slashIndex = database.LastIndexOf('-');
-                            string databaseDirectoryName;
-                            if (slashIndex != -1)
-                                databaseDirectoryName = database.Substring(slashIndex + 1);
-                            else
-                                databaseDirectoryName = Path.GetFileName(database);
-
-                            string databasesDestinationPath = Directory.GetDirectories(creationPath.ToString()).First(path => Path.GetFileName(path).Contains(databaseDirectoryName));
-
-                            #region RollBack Directory
-                            string[] databaseSubDirectoriesSrc = Directory.GetDirectories(database);
-                            foreach (string databaseSubDirectory in databaseSubDirectoriesSrc)
-                            {
-                                string databaseSubDirectoryDestinationPath = new(databasesDestinationPath + '\\' + Path.GetFileName(databaseSubDirectory));
-
-                                if (!Directory.Exists(databaseSubDirectoryDestinationPath))
-                                    Directory.CreateDirectory(databaseSubDirectoryDestinationPath);
-
-                                string[] subDirectoryFiles = Directory.GetFiles(databaseSubDirectory);
-                                foreach (string subDirectoryFile in subDirectoryFiles)
-                                {
-                                    string subDirectoryFileDestinationPath = new(databaseSubDirectoryDestinationPath + '\\' + Path.GetFileName(subDirectoryFile));
-
-                                    if (System.IO.File.Exists(subDirectoryFileDestinationPath))
-                                        System.IO.File.Delete(subDirectoryFileDestinationPath);
-                                    System.IO.File.Move(subDirectoryFile, subDirectoryFileDestinationPath);
-                                }
-                            }
-                            #endregion
-
-                            #region Files
-                            string[] databaseFiles = Directory.GetFiles(database);
-                            foreach (string databaseFile in databaseFiles)
-                            {
-                                string fileDestinationPath = new(databasesDestinationPath + '\\' + Path.GetFileName(databaseFile));
-
-                                if (System.IO.File.Exists(fileDestinationPath))
-                                    System.IO.File.Delete(fileDestinationPath);
-                                System.IO.File.Move(databaseFile, fileDestinationPath);
-                            }
-                            #endregion
-                        }
-
-                        creationPath.Replace(localFolderSubDirectories[1], string.Empty);
-                    }
-
-                    if (versionSubDirectory.Contains("Reports"))
-                    {
-                        string[] reports = Directory.GetDirectories(versionSubDirectory);
-                        creationPath.Append(localFolderSubDirectories[2]);
-
-                        foreach (string report in reports)
-                        {
-                            string reportDestinationPath = new(creationPath.ToString() + '\\' + Path.GetFileName(report));
-
-                            if (Directory.Exists(reportDestinationPath))
-                                Directory.Delete(reportDestinationPath, true);
-                            Directory.Move(report, reportDestinationPath);
-                        }
-                        creationPath.Replace(localFolderSubDirectories[2], string.Empty);
-                    }
+                    else if (versionSubDirectory.Contains(localFolderNames[2]))
+                        AggregateReportFolders(versionSubDirectory, Path.Combine(localPath, rootFolderName, localFolderNames[2]));
                 }
             }
-            #endregion
+        }
 
-            #region Zip File
+        private static void AggregateApplicationFolders(string srcPath, string destPath)
+        {
+            string[] applications = Directory.GetDirectories(srcPath);
+
+            foreach (string application in applications)
+            {
+                string applicationDestPath = Path.Combine(destPath, Path.GetFileName(application));
+
+                if (Directory.Exists(applicationDestPath))
+                    Directory.Delete(applicationDestPath, true);
+
+                Directory.Move(application, applicationDestPath);
+            }
+        }
+
+        private void AggregateDatabaseFolders(string srcPath, string destPath, string projectName)
+        {
+            string[] databases = Directory.GetDirectories(srcPath);
+
+            foreach (string database in databases)
+            {
+                string databaseName = Path.GetFileName(database);
+
+                int slashIndex = databaseName.LastIndexOf('-');
+
+                string databaseDirectoryName;
+
+                if (slashIndex != -1)
+                    databaseDirectoryName = databaseName.Substring(slashIndex + 1);
+                else
+                    databaseDirectoryName = databaseName;
+
+                string databasesDestinationPath = Path
+                    .Combine(destPath,
+                     GetDatabaseFolderNames(projectName)
+                    .First(databases => databases.Contains(databaseDirectoryName)));
+
+                string[] databaseSubDirectories = Directory.GetDirectories(database);
+
+                foreach (string databaseSubDirectory in databaseSubDirectories)
+                {
+                    string databaseSubDirectoryDestinationPath = Path.Combine(databasesDestinationPath, Path.GetFileName(databaseSubDirectory));
+
+                    if (!Directory.Exists(databaseSubDirectoryDestinationPath))
+                        Directory.CreateDirectory(databaseSubDirectoryDestinationPath);
+
+                    string[] subDirectoryFiles = Directory.GetFiles(databaseSubDirectory);
+
+                    foreach (string subDirectoryFile in subDirectoryFiles)
+                    {
+                        string subDirectoryFileDestinationPath = Path.Combine(databaseSubDirectoryDestinationPath, Path.GetFileName(subDirectoryFile));
+
+                        if (System.IO.File.Exists(subDirectoryFileDestinationPath))
+                            System.IO.File.Delete(subDirectoryFileDestinationPath);
+                        System.IO.File.Move(subDirectoryFile, subDirectoryFileDestinationPath);
+                    }
+                }
+
+                string[] databaseFiles = Directory.GetFiles(database);
+
+                foreach (string databaseFile in databaseFiles)
+                {
+                    string fileDestinationPath = Path.Combine(databasesDestinationPath, Path.GetFileName(databaseFile));
+
+                    if (System.IO.File.Exists(fileDestinationPath))
+                        System.IO.File.Delete(fileDestinationPath);
+                    System.IO.File.Move(databaseFile, fileDestinationPath);
+                }
+            }
+        }
+
+        private static void AggregateReportFolders(string srcPath, string destPath)
+        {
+            string[] reports = Directory.GetDirectories(srcPath);
+
+            foreach (string report in reports)
+            {
+                string reportDestinationPath = Path.Combine(destPath, Path.GetFileName(report));
+
+                if (Directory.Exists(reportDestinationPath))
+                    Directory.Delete(reportDestinationPath, true);
+                Directory.Move(report, reportDestinationPath);
+            }
+        }
+
+        private static byte[] ZipLocalFolder(string localPath, string rootFolderName)
+        {
             string zipFilePath = Path.Combine(localPath, rootFolderName + ".zip");
 
             if (System.IO.File.Exists(zipFilePath))
                 System.IO.File.Delete(zipFilePath);
 
-            ZipFile.CreateFromDirectory(creationPath.ToString(), zipFilePath);
+            ZipFile.CreateFromDirectory(Path.Combine(localPath, rootFolderName), zipFilePath);
 
-            byte[] zipBytes = System.IO.File.ReadAllBytes(zipFilePath);
-            string zipFileName = Path.GetFileName(zipFilePath);
-            #endregion
-
-            //return Json(new { zipFilePath = Url.Action("DownloadZip", new { filePath = zipFilePath }) });
-            
-            return File(zipBytes, "application/zip", zipFileName);
+            return System.IO.File.ReadAllBytes(zipFilePath);
         }
-
-        //[HttpGet]
-        //public IActionResult DownloadZip(string filePath)
-        //{
-        //    if (System.IO.File.Exists(filePath))
-        //    {
-        //        byte[] fileBytes = System.IO.File.ReadAllBytes(filePath);
-        //        string fileName = Path.GetFileName(filePath);
-        //        return File(fileBytes, "application/zip", fileName);
-        //    }
-        //    return NotFound();
-        //}
     }
 }
