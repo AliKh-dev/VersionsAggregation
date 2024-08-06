@@ -24,12 +24,19 @@ namespace VersionsAggregationWeb.Controllers
         [HttpPost]
         public IActionResult Index(string githubRepoUrl, string versionsPath, string projectName, string rootFolderName)
         {
-            string clonePath = @"C:\Users\Ali\Desktop\Practice\CloneFolder";
+            string filesPath = CreateFilesDirectoryInProject();
 
-            if (!CloneRepositoryFromGithub(githubRepoUrl, clonePath))
-                throw new InvalidOperationException(message: "Repository Url is incorrect!");
+            (string localPath, string clonePath, Guid guid) = CreateEachRequestDirectory(filesPath);
 
-            string localPath = @"C:\Users\Ali\Desktop\Practice\CreationFolder";
+
+            try
+            {
+                CloneRepositoryFromGithub(githubRepoUrl, clonePath);
+            }
+            catch (Exception)
+            {
+                throw;
+            }
 
             CreateLocalFolder(localPath, rootFolderName, projectName);
 
@@ -37,21 +44,58 @@ namespace VersionsAggregationWeb.Controllers
 
             ChooseSubFolder(localPath, rootFolderName, clonePath, versionsPath, projectName);
 
-            return File(ZipLocalFolder(localPath, rootFolderName), "application/zip", fileDownloadName: rootFolderName + ".zip");
+            byte[] fileContent = ZipLocalFolder(localPath, rootFolderName);
 
+            DeleteRequestDirectory(filesPath, guid);
+
+            return File(fileContent, "application/zip", fileDownloadName: rootFolderName + ".zip");
+        }
+        private static void DeleteRequestDirectory(string filesPath, Guid guid)
+        {
+            string requestDirectoryPath = Path.Combine(filesPath, guid.ToString());
+
+            Directory.GetFiles(requestDirectoryPath, "*", SearchOption.AllDirectories)
+             .ToList()
+             .ForEach(file => new FileInfo(file) { IsReadOnly = false });
+
+            if (Directory.Exists(requestDirectoryPath))
+               Directory.Delete(requestDirectoryPath, true);
         }
 
-        private static bool CloneRepositoryFromGithub(string githubRepoUrl, string clonePath)
+        private static string CreateFilesDirectoryInProject()
+        {
+            string currentDirectory = Directory.GetCurrentDirectory();
+
+            string filesPath = Path.Combine(currentDirectory, "Files");
+
+            Directory.CreateDirectory(filesPath);
+
+            return filesPath;
+        }
+
+        private static (string, string, Guid) CreateEachRequestDirectory(string filesPath)
+        {
+            Guid guid = Guid.NewGuid();
+
+            string creationPath = Path.Combine(filesPath, guid.ToString(), "CreationFolder");
+            string clonePath = Path.Combine(filesPath, guid.ToString(), "CloneFolder");
+
+            Directory.CreateDirectory(creationPath);
+            Directory.CreateDirectory(clonePath);
+
+            return (creationPath, clonePath, guid);
+        }
+
+        private static void CloneRepositoryFromGithub(string githubRepoUrl, string clonePath)
         {
             try
             {
                 Repository.Clone(githubRepoUrl, clonePath);
-                return true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"An error ocurrred: {ex.Message}");
-                return false;
+                throw;
             }
         }
 
