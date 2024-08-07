@@ -1,16 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System.Text;
 using System.IO.Compression;
 using LibGit2Sharp;
-using System.Net.Sockets;
 
 namespace VersionsAggregationWeb.Controllers
 {
     [Route("[controller]")]
-    public class VersionsController : Controller
+    public class VersionsController(IConfiguration configuration) : Controller
     {
-        private readonly IConfiguration _configuration;
-        public VersionsController(IConfiguration configuration) => _configuration = configuration;
+        private readonly IConfiguration _configuration = configuration;
 
         [Route("/")]
         [Route("[action]")]
@@ -22,21 +19,16 @@ namespace VersionsAggregationWeb.Controllers
 
         [Route("[action]")]
         [HttpPost]
-        public IActionResult Index(string githubRepoUrl, string versionsPath, string projectName, string rootFolderName)
+        public IActionResult Index(string gitOnlineService, string? username, string? appPassword, string repoUrl, string versionsPath, string projectName, string rootFolderName)
         {
             string filesPath = CreateFilesDirectoryInProject();
 
             (string localPath, string clonePath, Guid guid) = CreateEachRequestDirectory(filesPath);
 
-
-            try
-            {
-                CloneRepositoryFromGithub(githubRepoUrl, clonePath);
-            }
-            catch (Exception)
-            {
-                throw;
-            }
+            if (username != null && appPassword != null)
+                CloneRepository(gitOnlineService, repoUrl, clonePath, username, appPassword);
+            else
+                CloneRepository(gitOnlineService, repoUrl, clonePath);
 
             CreateLocalFolder(localPath, rootFolderName, projectName);
 
@@ -50,6 +42,7 @@ namespace VersionsAggregationWeb.Controllers
 
             return File(fileContent, "application/zip", fileDownloadName: rootFolderName + ".zip");
         }
+        
         private static void DeleteRequestDirectory(string filesPath, Guid guid)
         {
             string requestDirectoryPath = Path.Combine(filesPath, guid.ToString());
@@ -101,7 +94,7 @@ namespace VersionsAggregationWeb.Controllers
 
         private string[] GetLocalFolderNames(string projectName)
         {
-            return _configuration.GetSection($"databaseDirectories:{projectName}:Applications")
+            return _configuration.GetSection($"Directories:{projectName}:Operations")
                                  .Get<string[]>()
                                  ?? throw new InvalidOperationException
                                  ("Configuration for Applications is missing or null.");
@@ -109,7 +102,7 @@ namespace VersionsAggregationWeb.Controllers
 
         private string[] GetDatabaseFolderNames(string projectName)
         {
-            return _configuration.GetSection($"databaseDirectories:{projectName}:databaseSubDirectories")
+            return _configuration.GetSection($"Directories:{projectName}:DataBases")
                                  .Get<string[]>()
                                  ?? throw new InvalidOperationException
                                  ("Configuration for Applications is missing or null.");
@@ -261,6 +254,72 @@ namespace VersionsAggregationWeb.Controllers
             ZipFile.CreateFromDirectory(Path.Combine(localPath, rootFolderName), zipFilePath);
 
             return System.IO.File.ReadAllBytes(zipFilePath);
+        }
+
+        private static void CloneRepository(string gitOnlineService, string repoUrl, string clonePath)
+        {
+            switch (gitOnlineService)
+            {
+                case "github":
+                    GithubCloneRepository(repoUrl, clonePath);
+                    break;
+                case "bitbucket":
+                    BitbucketCloneRepository(repoUrl, clonePath);
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        private static void CloneRepository(string gitOnlineService, string repoUrl, string clonePath, string username, string appPassword)
+        {
+            switch (gitOnlineService)
+            {
+                case "github":
+                    GithubCloneRepository(repoUrl, clonePath, username, appPassword);
+                    break;
+                case "bitbucket":
+                    BitbucketCloneRepository(repoUrl, clonePath, username, appPassword);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private static void BitbucketCloneRepository(string repositoryUrl, string clonePath)
+        {
+            Repository.Clone(repositoryUrl, clonePath);
+        }
+        
+        private static void BitbucketCloneRepository(string repositoryUrl, string clonePath, string username, string appPassword)
+        {
+            CloneOptions cloneOptions = GetCloneOptionsWithCredentials(username, appPassword);
+
+            Repository.Clone(repositoryUrl, clonePath, cloneOptions);
+        }
+
+        private static void GithubCloneRepository(string repositoryUrl, string clonePath)
+        {
+            Repository.Clone(repositoryUrl, clonePath);
+        }
+        
+        private static void GithubCloneRepository(string repositoryUrl, string clonePath, string username, string appPassword)
+        {
+            CloneOptions cloneOptions = GetCloneOptionsWithCredentials(username, appPassword);
+
+            Repository.Clone(repositoryUrl, clonePath, cloneOptions);
+        }
+
+        private static CloneOptions GetCloneOptionsWithCredentials(string username, string appPassword)
+        {
+            CloneOptions cloneOptions = new();
+            cloneOptions.FetchOptions.CredentialsProvider = (_url, _user, _cre) => new UsernamePasswordCredentials
+            {
+                Username = username,
+                Password = appPassword
+            };
+
+            return cloneOptions;
         }
     }
 }

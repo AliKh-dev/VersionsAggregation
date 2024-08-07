@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="LibGit2Sharp" Version="0.30.0" />
+    <PackageReference Include="SharpBucket" Version="0.17.0" />
   </ItemGroup>
 
 </Project>
