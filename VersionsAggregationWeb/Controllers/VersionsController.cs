@@ -14,6 +14,7 @@ namespace VersionsAggregationWeb.Controllers
         [HttpGet]
         public IActionResult Index()
         {
+            ViewBag.ProjectName = _configuration.GetSection("Directories").GetChildren().Select(child => child.Key);
             return View();
         }
 
@@ -51,9 +52,9 @@ namespace VersionsAggregationWeb.Controllers
 
             DeleteRequestDirectory(filesPath, guid);
 
-            return File(fileContent, "application/zip", fileDownloadName: "Operatoin.zip");
+            return File(fileContent, "application/zip", fileDownloadName: "Operation.zip");
         }
-        
+
         private static void DeleteRequestDirectory(string filesPath, Guid guid)
         {
             string requestDirectoryPath = Path.Combine(filesPath, guid.ToString());
@@ -88,19 +89,6 @@ namespace VersionsAggregationWeb.Controllers
             Directory.CreateDirectory(clonePath);
 
             return (creationPath, clonePath, guid);
-        }
-
-        private static void CloneRepositoryFromGithub(string githubRepoUrl, string clonePath)
-        {
-            try
-            {
-                Repository.Clone(githubRepoUrl, clonePath);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"An error ocurrred: {ex.Message}");
-                throw;
-            }
         }
 
         private string[] GetLocalFolderNames(string projectName)
@@ -239,14 +227,13 @@ namespace VersionsAggregationWeb.Controllers
                 string databaseDirectoryName;
 
                 if (slashIndex != -1)
-                    databaseDirectoryName = databaseName.Substring(slashIndex + 1);
+                    databaseDirectoryName = databaseName[(slashIndex + 1)..];
                 else
                     databaseDirectoryName = databaseName;
 
-                string databasesDestinationPath = Path
-                    .Combine(destPath,
-                     GetDatabaseFolderNames(projectName)
-                    .First(databases => databases.Contains(databaseDirectoryName)));
+                string databasesDestinationPath = Path.Combine(destPath,GetDatabaseFolderNames(projectName)
+                    .FirstOrDefault(databases => databases.Contains(databaseDirectoryName),
+                                    databaseDirectoryName + "(Unknown)"));
 
                 string[] databaseSubDirectories = Directory.GetDirectories(database);
 

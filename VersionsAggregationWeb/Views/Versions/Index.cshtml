@@ -22,7 +22,9 @@
                 margin-right: 10px;
             }
 
-            .form-group input[type="text"] {
+            .form-group input[type="text"],
+            .form-group input[type="password"],
+            .form-group select {
                 flex: 1;
                 border: 1px solid #ded9ee;
                 padding: 10px;
@@ -75,17 +77,17 @@
                 <label for="username">Username:</label>
                 <input type="text" id="username" name="username" placeholder="Enter username here." />
             </div>
-            
+
             <div class="form-group">
                 <label for="app-password">App password:</label>
                 <input type="password" id="app-password" name="appPassword" placeholder="Enter app password here." />
             </div>
-            
+
             <div class="form-group">
                 <label for="repo-url">Repository Url:</label>
-                <input type="text" id="repo-url" name="repoUrl" placeholder="Enter github url here." />
+                <input type="text" id="repo-url" name="repoUrl" placeholder="Enter repository URL here." />
             </div>
-            
+
             <div class="form-group">
                 <label for="branch">Branch name:</label>
                 <input type="text" id="branch" name="branch" placeholder="Enter branch name here." />
@@ -95,26 +97,30 @@
                 <label for="versions-path">Path of Versions:</label>
                 <input type="text" id="versions-path" name="versionsPath" placeholder="Enter versions path here.">
             </div>
-            
+
             <div class="form-group">
                 <label for="from-version">From version:</label>
                 <input type="text" id="from-version" name="fromVersion">
             </div>
-            
+
             <div class="form-group">
                 <label for="to-version">To version:</label>
                 <input type="text" id="to-version" name="toVersion">
             </div>
-            
+
             <div class="form-group">
                 <label for="project-name">Project name:</label>
-                <input type="text" id="project-name" name="projectName" placeholder="Enter project name here.">
+                <select id="project-name" name="projectName">
+                    @foreach (var item in ViewBag.ProjectName)
+                    {
+                        <option value="@item">@item</option>
+                    }
+                </select>
             </div>
 
             <div class="submit-container">
                 <input type="submit" value="Submit">
             </div>
-
         </fieldset>
     </form>
 </body>
