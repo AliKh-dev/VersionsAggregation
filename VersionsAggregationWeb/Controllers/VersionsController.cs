@@ -20,19 +20,11 @@ namespace VersionsAggregationWeb.Controllers
 
         [Route("[action]")]
         [HttpPost]
-        public IActionResult Index(string gitOnlineService,
-                                   string? username,
-                                   string? appPassword,
-                                   string repoUrl,
-                                   string branch,
-                                   string versionsPath,
-                                   string? fromVersion,
-                                   string? toVersion,
-                                   string projectName)
+        public IActionResult Index(string gitOnlineService, string? username, string? appPassword, string repoUrl, string branch, string versionsPath, string? fromVersion, string? toVersion, string projectName)
         {
             string filesPath = CreateFilesDirectoryInProject();
 
-            (string localPath, string clonePath, Guid guid) = CreateEachRequestDirectory(filesPath);
+            (string localPath, string clonePath, string requestFolderName) = CreateEachRequestDirectory(filesPath, projectName);
 
             if (username != null && appPassword != null)
                 CloneRepository(gitOnlineService, repoUrl, clonePath, branch, username, appPassword);
@@ -50,14 +42,14 @@ namespace VersionsAggregationWeb.Controllers
 
             byte[] fileContent = ZipLocalFolder(localPath);
 
-            DeleteRequestDirectory(filesPath, guid);
+            DeleteRequestDirectory(filesPath, requestFolderName);
 
             return File(fileContent, "application/zip", fileDownloadName: "Operation.zip");
         }
 
-        private static void DeleteRequestDirectory(string filesPath, Guid guid)
+        private static void DeleteRequestDirectory(string filesPath, string requestFolderName)
         {
-            string requestDirectoryPath = Path.Combine(filesPath, guid.ToString());
+            string requestDirectoryPath = Path.Combine(filesPath, requestFolderName);
 
             Directory.GetFiles(requestDirectoryPath, "*", SearchOption.AllDirectories)
              .ToList()
@@ -78,17 +70,19 @@ namespace VersionsAggregationWeb.Controllers
             return filesPath;
         }
 
-        private static (string, string, Guid) CreateEachRequestDirectory(string filesPath)
+        private static (string, string, string) CreateEachRequestDirectory(string filesPath, string projectName)
         {
-            Guid guid = Guid.NewGuid();
+            DateTime dateTime = DateTime.Now;
 
-            string creationPath = Path.Combine(filesPath, guid.ToString(), "CreationFolder");
-            string clonePath = Path.Combine(filesPath, guid.ToString(), "CloneFolder");
+            string requestFolderName = projectName + dateTime.Millisecond;
+
+            string creationPath = Path.Combine(filesPath, requestFolderName, "Creation");
+            string clonePath = Path.Combine(filesPath, requestFolderName, "Clone");
 
             Directory.CreateDirectory(creationPath);
             Directory.CreateDirectory(clonePath);
 
-            return (creationPath, clonePath, guid);
+            return (creationPath, clonePath, requestFolderName);
         }
 
         private string[] GetLocalFolderNames(string projectName)
@@ -207,10 +201,20 @@ namespace VersionsAggregationWeb.Controllers
             {
                 string applicationDestPath = Path.Combine(destPath, Path.GetFileName(application));
 
-                if (Directory.Exists(applicationDestPath))
-                    Directory.Delete(applicationDestPath, true);
+                if (!Directory.Exists(applicationDestPath))
+                    Directory.CreateDirectory(applicationDestPath);
+                
+                string[] applicationFiles = Directory.GetFiles(application);
 
-                Directory.Move(application, applicationDestPath);
+                foreach (string applicationFile in applicationFiles)
+                {
+                    string applicationFileDestPath = Path.Combine(applicationDestPath, applicationFile);
+                    
+                    if (Directory.Exists(applicationFileDestPath))
+                        Directory.Delete(applicationFileDestPath, true);
+
+                    Directory.Move(applicationFile, applicationFileDestPath);
+                }
             }
         }
 
