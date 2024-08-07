@@ -19,28 +19,39 @@ namespace VersionsAggregationWeb.Controllers
 
         [Route("[action]")]
         [HttpPost]
-        public IActionResult Index(string gitOnlineService, string? username, string? appPassword, string repoUrl, string versionsPath, string projectName, string rootFolderName)
+        public IActionResult Index(string gitOnlineService,
+                                   string? username,
+                                   string? appPassword,
+                                   string repoUrl,
+                                   string branch,
+                                   string versionsPath,
+                                   string? fromVersion,
+                                   string? toVersion,
+                                   string projectName)
         {
             string filesPath = CreateFilesDirectoryInProject();
 
             (string localPath, string clonePath, Guid guid) = CreateEachRequestDirectory(filesPath);
 
             if (username != null && appPassword != null)
-                CloneRepository(gitOnlineService, repoUrl, clonePath, username, appPassword);
+                CloneRepository(gitOnlineService, repoUrl, clonePath, branch, username, appPassword);
             else
-                CloneRepository(gitOnlineService, repoUrl, clonePath);
+                CloneRepository(gitOnlineService, repoUrl, clonePath, branch);
 
-            CreateLocalFolder(localPath, rootFolderName, projectName);
+            CreateLocalFolder(localPath, projectName);
 
-            CreateDatabaseFolders(localPath, rootFolderName, projectName);
+            CreateDatabaseFolders(localPath, projectName);
 
-            ChooseSubFolder(localPath, rootFolderName, clonePath, versionsPath, projectName);
+            if (fromVersion != null && toVersion != null)
+                ChooseSubFolder(localPath, clonePath, versionsPath, fromVersion, toVersion, projectName);
+            else
+                ChooseSubFolder(localPath, clonePath, versionsPath, projectName);
 
-            byte[] fileContent = ZipLocalFolder(localPath, rootFolderName);
+            byte[] fileContent = ZipLocalFolder(localPath);
 
             DeleteRequestDirectory(filesPath, guid);
 
-            return File(fileContent, "application/zip", fileDownloadName: rootFolderName + ".zip");
+            return File(fileContent, "application/zip", fileDownloadName: "Operatoin.zip");
         }
         
         private static void DeleteRequestDirectory(string filesPath, Guid guid)
@@ -108,28 +119,23 @@ namespace VersionsAggregationWeb.Controllers
                                  ("Configuration for Applications is missing or null.");
         }
 
-        private void CreateLocalFolder(string localPath, string rootFolderName, string projectName)
+        private void CreateLocalFolder(string localPath, string projectName)
         {
-            string localFolderPath = Path.Combine(localPath, rootFolderName);
-
-            if (Directory.Exists(localFolderPath))
-                Directory.Delete(localFolderPath, true);
-
-            Directory.CreateDirectory(localFolderPath);
+            Directory.CreateDirectory(localPath);
 
             string[] localFolderSubDirectories = GetLocalFolderNames(projectName)!;
 
             foreach (string localFolderSubDirectory in localFolderSubDirectories)
-                Directory.CreateDirectory(Path.Combine(localFolderPath, localFolderSubDirectory));
+                Directory.CreateDirectory(Path.Combine(localPath, localFolderSubDirectory));
         }
 
-        private void CreateDatabaseFolders(string localPath, string rootFolderName, string projectName)
+        private void CreateDatabaseFolders(string localPath, string projectName)
         {
             string[] databaseSubDirectories = GetDatabaseFolderNames(projectName)!;
 
             foreach (string databaseSubDirectory in databaseSubDirectories)
             {
-                string path = Path.Combine(localPath, rootFolderName, "Databases", databaseSubDirectory);
+                string path = Path.Combine(localPath, "DataBases", databaseSubDirectory);
 
                 if (Directory.Exists(path))
                     Directory.Delete(path, true);
@@ -138,25 +144,71 @@ namespace VersionsAggregationWeb.Controllers
             }
         }
 
-        private void ChooseSubFolder(string localPath, string rootFolderName, string clonePath, string versionsPath, string projectName)
+        private void ChooseSubFolder(string localPath, string clonePath, string versionsPath, string fromVersion, string toVersion, string projectName)
         {
-            string[] versionDirectories = Directory.GetDirectories(Path.Combine(clonePath, versionsPath));
             string[] localFolderNames = GetLocalFolderNames(projectName);
 
+            string startDirectory = Path.Combine(clonePath, versionsPath, fromVersion);
+            string endDirectory = Path.Combine(clonePath, versionsPath, toVersion);
+
+            ReadOnlySpan<string> versionDirectories = GetDirectoriesInRange(Directory.GetDirectories(Path.Combine(clonePath, versionsPath)), startDirectory , endDirectory);
+            
             foreach (string versionDirectory in versionDirectories)
             {
                 foreach (string versionSubDirectory in Directory.GetDirectories(versionDirectory))
                 {
                     if (versionSubDirectory.Contains(localFolderNames[0]))
-                        AggregateApplicationFolders(versionSubDirectory, Path.Combine(localPath, rootFolderName, localFolderNames[0]));
+                        AggregateApplicationFolders(versionSubDirectory, Path.Combine(localPath, localFolderNames[0]));
 
                     else if (versionSubDirectory.Contains(localFolderNames[1]))
-                        AggregateDatabaseFolders(versionSubDirectory, Path.Combine(localPath, rootFolderName, localFolderNames[1]), projectName);
+                        AggregateDatabaseFolders(versionSubDirectory, Path.Combine(localPath, localFolderNames[1]), projectName);
 
                     else if (versionSubDirectory.Contains(localFolderNames[2]))
-                        AggregateReportFolders(versionSubDirectory, Path.Combine(localPath, rootFolderName, localFolderNames[2]));
+                        AggregateReportFolders(versionSubDirectory, Path.Combine(localPath, localFolderNames[2]));
                 }
             }
+        }
+        
+        private void ChooseSubFolder(string localPath, string clonePath, string versionsPath, string projectName)
+        {
+            string[] localFolderNames = GetLocalFolderNames(projectName);
+
+            string[] versionDirectories = Directory.GetDirectories(Path.Combine(clonePath, versionsPath));
+            
+            foreach (string versionDirectory in versionDirectories)
+            {
+                foreach (string versionSubDirectory in Directory.GetDirectories(versionDirectory))
+                {
+                    if (versionSubDirectory.Contains(localFolderNames[0]))
+                        AggregateApplicationFolders(versionSubDirectory, Path.Combine(localPath, localFolderNames[0]));
+
+                    else if (versionSubDirectory.Contains(localFolderNames[1]))
+                        AggregateDatabaseFolders(versionSubDirectory, Path.Combine(localPath, localFolderNames[1]), projectName);
+
+                    else if (versionSubDirectory.Contains(localFolderNames[2]))
+                        AggregateReportFolders(versionSubDirectory, Path.Combine(localPath, localFolderNames[2]));
+                }
+            }
+        }
+
+        private static ReadOnlySpan<string> GetDirectoriesInRange(string[] directories, string start, string end)
+        {
+            ReadOnlySpan<string> span = new(directories);
+
+            int startIndex = span.IndexOf(start);
+            int endIndex = span.IndexOf(end);
+
+            if (startIndex == -1)
+                throw new ArgumentException("Start directory not found.");
+            
+            else if (endIndex == -1)
+                throw new ArgumentException("End directory not found.");
+            
+            else if (endIndex < startIndex)
+                throw new ArgumentException("End directory must come after start directory.");
+
+
+            return span.Slice(startIndex, endIndex - startIndex + 1);
         }
 
         private static void AggregateApplicationFolders(string srcPath, string destPath)
@@ -244,68 +296,74 @@ namespace VersionsAggregationWeb.Controllers
             }
         }
 
-        private static byte[] ZipLocalFolder(string localPath, string rootFolderName)
+        private static byte[] ZipLocalFolder(string localPath)
         {
-            string zipFilePath = Path.Combine(localPath, rootFolderName + ".zip");
+            string zipFilePath = localPath + ".zip";
 
             if (System.IO.File.Exists(zipFilePath))
                 System.IO.File.Delete(zipFilePath);
 
-            ZipFile.CreateFromDirectory(Path.Combine(localPath, rootFolderName), zipFilePath);
+            ZipFile.CreateFromDirectory(localPath, zipFilePath);
 
             return System.IO.File.ReadAllBytes(zipFilePath);
         }
 
-        private static void CloneRepository(string gitOnlineService, string repoUrl, string clonePath)
+        private static void CloneRepository(string gitOnlineService, string repoUrl, string clonePath, string branch)
         {
             switch (gitOnlineService)
             {
                 case "github":
-                    GithubCloneRepository(repoUrl, clonePath);
+                    GithubCloneRepository(repoUrl, clonePath, branch);
                     break;
                 case "bitbucket":
-                    BitbucketCloneRepository(repoUrl, clonePath);
+                    BitbucketCloneRepository(repoUrl, clonePath, branch);
                     break;
                 default:
                     break;
             }
         }
         
-        private static void CloneRepository(string gitOnlineService, string repoUrl, string clonePath, string username, string appPassword)
+        private static void CloneRepository(string gitOnlineService, string repoUrl, string clonePath, string branch, string username, string appPassword)
         {
             switch (gitOnlineService)
             {
                 case "github":
-                    GithubCloneRepository(repoUrl, clonePath, username, appPassword);
+                    GithubCloneRepository(repoUrl, clonePath, branch, username, appPassword);
                     break;
                 case "bitbucket":
-                    BitbucketCloneRepository(repoUrl, clonePath, username, appPassword);
+                    BitbucketCloneRepository(repoUrl, clonePath, branch, username, appPassword);
                     break;
                 default:
                     break;
             }
         }
 
-        private static void BitbucketCloneRepository(string repositoryUrl, string clonePath)
+        private static void BitbucketCloneRepository(string repositoryUrl, string clonePath, string branch)
         {
-            Repository.Clone(repositoryUrl, clonePath);
+            CloneOptions cloneOptions = new() { BranchName = branch };
+
+            Repository.Clone(repositoryUrl, clonePath, cloneOptions);
         }
         
-        private static void BitbucketCloneRepository(string repositoryUrl, string clonePath, string username, string appPassword)
+        private static void BitbucketCloneRepository(string repositoryUrl, string clonePath, string branch, string username, string appPassword)
         {
             CloneOptions cloneOptions = GetCloneOptionsWithCredentials(username, appPassword);
+            cloneOptions.BranchName = branch;
 
             Repository.Clone(repositoryUrl, clonePath, cloneOptions);
         }
 
-        private static void GithubCloneRepository(string repositoryUrl, string clonePath)
+        private static void GithubCloneRepository(string repositoryUrl, string clonePath, string branch)
         {
-            Repository.Clone(repositoryUrl, clonePath);
+            CloneOptions cloneOptions = new() { BranchName = branch };
+
+            Repository.Clone(repositoryUrl, clonePath, cloneOptions);
         }
         
-        private static void GithubCloneRepository(string repositoryUrl, string clonePath, string username, string appPassword)
+        private static void GithubCloneRepository(string repositoryUrl, string clonePath, string branch, string username, string appPassword)
         {
             CloneOptions cloneOptions = GetCloneOptionsWithCredentials(username, appPassword);
+            cloneOptions.BranchName = branch;
 
             Repository.Clone(repositoryUrl, clonePath, cloneOptions);
         }
